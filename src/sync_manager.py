@@ -3,7 +3,6 @@ from datetime import datetime
 from typing import Dict, List, Optional, Any
 from src.notion_client import NotionClient
 from src.google_calendar_client import GoogleCalendarClient
-from src.claude_parser import ClaudeParser
 import config
 
 logger = logging.getLogger(__name__)
@@ -14,23 +13,16 @@ class SyncManager:
         self,
         notion_client: NotionClient,
         calendar_client: GoogleCalendarClient,
-        parser: ClaudeParser,
     ):
         self.notion = notion_client
         self.calendar = calendar_client
-        self.parser = parser
 
-    def process_raw_input(
-        self, raw_text: str, page_id: Optional[str] = None
+    def process_parsed_data(
+        self, parsed_data: Dict[str, Any], page_id: Optional[str] = None
     ) -> Dict[str, Any]:
-        """Process raw input and update Notion + create calendar event"""
+        """Process already-parsed schedule data and update Notion + create calendar event"""
         try:
-            # Step 1: Parse raw input using Claude
-            parsed_data = self.parser.parse_schedule(raw_text)
-            logger.info(f"Parsed schedule: {parsed_data.get('제목', 'Unknown')}")
-
-            # 원본 텍스트 저장
-            parsed_data["original_text"] = raw_text
+            logger.info(f"Processing parsed schedule: {parsed_data.get('제목', 'Unknown')}")
 
             # Step 2: Update Notion page with parsed data
             if page_id:

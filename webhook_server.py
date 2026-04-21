@@ -48,12 +48,12 @@ def run_server(host: str, port: int, debug: bool):
    - Health Check: http://{host}:{port}/health
    - Notion Webhook: POST http://{host}:{port}/webhook/notion
    - Edit Webhook: POST http://{host}:{port}/webhook/notion/edit
-   - API Parse: POST http://{host}:{port}/api/parse
+   - Schedule Sync: POST http://{host}:{port}/api/schedule
 
 📝 Example Request (cURL):
-   curl -X POST http://{host}:{port}/api/parse \\
+   curl -X POST http://{host}:{port}/api/schedule \\
      -H "Content-Type: application/json" \\
-     -d '{{"text": "교내일정: 회의가 11:00에 있습니다."}}'
+     -d '{{"제목": "교내일정 회의", "시간": "11:00~12:00", "장소": ["회의실"]}}'
 
 ⚙️  Configuration:
    - Check .env file for API keys

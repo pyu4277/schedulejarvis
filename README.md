@@ -78,56 +78,52 @@ cp .env.example .env
 
 ### 3. 사용 방법
 
-#### **방법 1: CLI (수동)**
-
-```bash
-# 텍스트 파싱 및 일정 생성
-python main.py parse --text "교내일정 회의가 있습니다. 시간: 11:00, 장소: 회의실"
-
-# Notion 페이지 ID와 함께 파싱
-python main.py parse \
-  --text "..." \
-  --page-id "a96a3b8563e3429..." 
-```
-
-#### **방법 2: API 서버 (자동)**
+#### **방법 1: API 서버 (권장)**
 
 ```bash
 # Webhook 서버 시작
 python webhook_server.py --host 0.0.0.0 --port 5000
 
-# 다른 터미널에서 테스트
-curl -X POST http://localhost:5000/api/parse \
+# 다른 터미널에서 파싱된 일정 데이터 전송
+# (상위 AI가 미리 파싱한 구조화된 JSON 데이터)
+curl -X POST http://localhost:5000/api/schedule \
   -H "Content-Type: application/json" \
   -d '{
-    "text": "교내일정: 오후 2시에 회의가 있습니다.",
+    "제목": "교내일정 회의",
+    "시간": "14:00~15:00",
+    "장소": ["회의실"],
+    "주요내용": "팀 회의",
+    "참석자": ["팀원들"],
+    "참석기관": ["부서"],
+    "종류": ["교내"],
     "page_id": "optional-page-id"
   }'
 ```
 
-#### **방법 3: Notion Webhook (완전 자동)**
+#### **방법 2: Notion Webhook (원문 수신)**
 
 1. Notion 데이터베이스에서 Webhook 구독 설정
 2. Webhook URL: `https://your-server.com/webhook/notion`
-3. "비고 및 원문" 필드 입력 시 자동 처리
+3. "비고 및 원문" 필드 입력 시 원문이 서버로 전달됨
+4. 서버는 원문을 로깅하고 외부 AI의 파싱을 기다림
+5. 파싱 완료 후 `/api/schedule` 엔드포인트로 구조화된 데이터 전송
 
-### CLI 명령어
+### API 엔드포인트
 
 ```bash
-# 원문 파싱
-python main.py parse --text "..."
+# 1. Webhook 서버 시작
+python webhook_server.py --debug
 
-# Notion 페이지를 캘린더로 동기화
-python main.py sync-notion-to-calendar --page-id "..."
+# 2. 구조화된 일정 데이터 동기화
+curl -X POST http://localhost:5000/api/schedule \
+  -H "Content-Type: application/json" \
+  -d '{"제목": "회의", "시간": "14:00~15:00"}'
 
-# 모든 Notion 페이지 조회
-python main.py list-notion-pages
+# 3. 서버 상태 확인
+curl http://localhost:5000/health
 
-# 캘린더 이벤트 조회
-python main.py list-calendar-events --days 30
-
-# 파서 테스트
-python main.py test-parser --text "..."
+# 4. Notion Webhook (자동 감지)
+# Notion 데이터베이스 설정에서 구독
 ```
 
 ## Notion 데이터베이스 필드

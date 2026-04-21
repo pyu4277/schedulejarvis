@@ -11,8 +11,8 @@ NOTION_DATABASE_ID = os.getenv("NOTION_DATABASE_ID", "a96a3b8563e342908b2f0af896
 GOOGLE_CALENDAR_ID = os.getenv("GOOGLE_CALENDAR_ID", "iothomepyu@gmail.com")
 GOOGLE_CREDENTIALS_FILE = os.getenv("GOOGLE_CREDENTIALS_FILE", "google_credentials.json")
 
-# Anthropic Configuration
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+# Anthropic Configuration (Optional - used only if external AI doesn't handle parsing)
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", None)
 
 # Sync Configuration
 SYNC_ENABLED = os.getenv("SYNC_ENABLED", "true").lower() == "true"

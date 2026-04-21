@@ -1,14 +1,11 @@
 import json
 import logging
-import hmac
-import hashlib
 from datetime import datetime
 from typing import Dict, Any, Optional
 from flask import Flask, request, jsonify
 from src.sync_manager import SyncManager
 from src.notion_client import NotionClient
 from src.google_calendar_client import GoogleCalendarClient
-from src.claude_parser import ClaudeParser
 import config
 
 logger = logging.getLogger(__name__)
@@ -21,10 +18,9 @@ class WebhookListener:
 
         # Initialize sync components
         try:
-            self.parser = ClaudeParser(config.ANTHROPIC_API_KEY)
             self.notion = NotionClient(config.NOTION_API_KEY, config.NOTION_DATABASE_ID)
             self.calendar = GoogleCalendarClient(config.TARGET_CALENDAR_ID)
-            self.sync_manager = SyncManager(self.notion, self.calendar, self.parser)
+            self.sync_manager = SyncManager(self.notion, self.calendar)
             logger.info("Sync components initialized successfully")
         except Exception as e:
             logger.error(f"Error initializing sync components: {e}")
@@ -71,9 +67,9 @@ class WebhookListener:
                 logger.error(f"Error handling Notion edit webhook: {e}")
                 return jsonify({"success": False, "error": str(e)}), 400
 
-        @self.app.route("/api/parse", methods=["POST"])
-        def api_parse():
-            """API endpoint for manual parsing"""
+        @self.app.route("/api/schedule", methods=["POST"])
+        def api_schedule():
+            """API endpoint for syncing already-parsed schedule data"""
             try:
                 payload = request.get_json()
 
@@ -83,18 +79,19 @@ class WebhookListener:
                         400,
                     )
 
-                raw_text = payload.get("text")
+                # Expected fields from parsed data
+                title = payload.get("제목")
                 page_id = payload.get("page_id")
 
-                if not raw_text:
+                if not title:
                     return (
-                        jsonify({"error": "Missing 'text' field"}),
+                        jsonify({"error": "Missing required field: 제목 (title)"}),
                         400,
                     )
 
-                logger.info(f"API parse request: text={raw_text[:50]}..., page_id={page_id}")
+                logger.info(f"API schedule sync request: title={title}, page_id={page_id}")
 
-                result = self.sync_manager.process_raw_input(raw_text, page_id)
+                result = self.sync_manager.process_parsed_data(payload, page_id)
 
                 return (
                     jsonify({"success": True, "data": result}),
@@ -102,13 +99,12 @@ class WebhookListener:
                 )
 
             except Exception as e:
-                logger.error(f"Error in API parse: {e}")
+                logger.error(f"Error in API schedule sync: {e}")
                 return jsonify({"success": False, "error": str(e)}), 500
 
     def _handle_notion_webhook(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """Handle Notion creation webhook events"""
+        """Handle Notion creation webhook events - stores raw text for parsing by external AI"""
         try:
-            # Extract page information
             page_id = data.get("id")
             properties_value = data.get("properties_value", {})
 
@@ -116,26 +112,24 @@ class WebhookListener:
                 logger.warning("No page ID in webhook data")
                 return {"status": "skipped", "reason": "No page ID"}
 
-            # Check if raw text or additional requirements are provided
+            # Extract raw text and additional requirements
             raw_text = properties_value.get("비고 및 원문", "")
             additional_req = properties_value.get("추가 요구사항(GPT)", "")
 
-            # Prefer raw text, fallback to additional requirements
-            text_to_parse = raw_text or additional_req
+            text_content = raw_text or additional_req
 
-            if not text_to_parse:
-                logger.info(f"No text to parse for page {page_id}")
+            if not text_content:
+                logger.info(f"No text provided for page {page_id}")
                 return {"status": "skipped", "reason": "No text provided"}
 
-            logger.info(f"Processing page {page_id} with text: {text_to_parse[:50]}...")
-
-            # Process the input
-            result = self.sync_manager.process_raw_input(text_to_parse, page_id)
+            logger.info(f"Notion webhook: page {page_id} received text: {text_content[:50]}...")
+            logger.info(f"Note: External AI should parse this text and send parsed data to /api/schedule endpoint")
 
             return {
-                "status": "success",
+                "status": "received",
                 "page_id": page_id,
-                "calendar_event_id": result.get("calendar_event_id"),
+                "message": "Raw text received. Send parsed JSON data to /api/schedule endpoint.",
+                "raw_text": text_content,
             }
 
         except Exception as e:
