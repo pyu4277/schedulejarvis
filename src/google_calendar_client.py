@@ -24,16 +24,59 @@ class GoogleCalendarClient:
     def _build_service(self, credentials_file: Optional[str] = None):
         """Build Google Calendar API service"""
         try:
+            credentials = None
+
+            # Priority 1: Service Account file (JSON)
             if credentials_file and os.path.exists(credentials_file):
-                credentials = service_account.Credentials.from_service_account_file(
-                    credentials_file, scopes=SCOPES
+                try:
+                    credentials = service_account.Credentials.from_service_account_file(
+                        credentials_file, scopes=SCOPES
+                    )
+                    logger.info("Using Service Account credentials")
+                except Exception as e:
+                    logger.warning(f"Failed to load service account: {e}")
+
+            # Priority 2: OAuth Client Secrets (OAuth 2.0 flow)
+            if not credentials and os.path.exists("credentials.json"):
+                try:
+                    flow = InstalledAppFlow.from_client_secrets_file(
+                        "credentials.json", SCOPES
+                    )
+                    credentials = flow.run_local_server(port=0)
+                    logger.info("Using OAuth 2.0 flow credentials")
+                except Exception as e:
+                    logger.warning(f"Failed to use OAuth flow: {e}")
+
+            # Priority 3: Stored OAuth token from environment
+            if not credentials:
+                try:
+                    import json
+                    from google.auth.transport.requests import Request
+                    from google.oauth2.credentials import Credentials
+
+                    refresh_token = os.getenv("GOOGLE_REFRESH_TOKEN")
+                    client_id = os.getenv("GOOGLE_CLIENT_ID")
+                    client_secret = os.getenv("GOOGLE_CLIENT_SECRET")
+
+                    if refresh_token and client_id and client_secret:
+                        credentials = Credentials.from_authorized_user_info(
+                            {
+                                "refresh_token": refresh_token,
+                                "client_id": client_id,
+                                "client_secret": client_secret,
+                            },
+                            scopes=SCOPES,
+                        )
+                        credentials.refresh(Request())
+                        logger.info("Using OAuth credentials from environment")
+                except Exception as e:
+                    logger.warning(f"Failed to use environment OAuth token: {e}")
+
+            if not credentials:
+                raise ValueError(
+                    "Unable to load Google Calendar credentials. "
+                    "Please provide one of: service account JSON, OAuth credentials.json, or environment tokens"
                 )
-            else:
-                # Try to use OAuth flow if no service account
-                flow = InstalledAppFlow.from_client_secrets_file(
-                    "credentials.json", SCOPES
-                )
-                credentials = flow.run_local_server(port=0)
 
             service = build("calendar", "v3", credentials=credentials)
             logger.info("Google Calendar service built successfully")

@@ -27,19 +27,24 @@ CALENDAR_MAPPING = {
 # Target Calendar (모든 일정 → 가족 캘린더로 통합)
 TARGET_CALENDAR_ID = "iothomepyu@gmail.com"
 
-# Notion Field Names
+# Notion Field Names (Make.com 시나리오 기준)
 NOTION_FIELDS = {
-    "title": "제목",
-    "date": "일시/장소, 일시",
-    "time": "시간",
-    "location": "장소",
+    "title": "주제",  # Make.com에서는 "주제" (title type)
+    "date": "일시",  # Make.com에서는 "일시" (date type)
+    "time": "시간",  # 시간 정보 (HH:MM~HH:MM)
+    "location": "일시/장소",  # 장소 정보는 이 필드의 rich_text에 포함됨
     "content": "주요내용",
-    "attendees": "참석자",
-    "organization": "참석기관",
-    "category": "일정종류(중요도)",
+    "attendees": "참석자",  # relation type
+    "organization": "참석기관",  # rich_text
+    "category": "일정종류(중요도)",  # multi_select
     "raw_text": "비고 및 원문",
     "additional_requirement": "추가 요구사항(GPT)",
-    "attachment": "파일첨부",
-    "sync_status": "동기화 상태",
-    "calendar_event_id": "캘린더 이벤트 ID",
+    "attachment": "파일첨부",  # files type
+    "sync_status": "동기화 상태",  # select (향후 사용)
+    "calendar_event_id": "구글ID",  # Make.com과 동일한 필드명
+    "creation_time": "생성 일시",  # 생성된 시간
+    "last_edited_time": "최종 편집 일시",  # 마지막 수정 시간
+    "gpt_summary": "GPT 요약 결과",  # Claude 파싱 결과 전체
+    "parse_result": "Parse 결과",  # 파싱 결과 상세
+    "generation_flag": "생성(setting)",  # checkbox - 캘린더 생성 여부
 }

@@ -1,133 +1,190 @@
 # Schedule Jarvis
 
-Notion과 Google Calendar를 연동하여 일정을 자동으로 관리하는 시스템입니다.
+Notion과 Google Calendar를 양방향 동기화하여 일정을 자동으로 관리하는 시스템입니다.
+Claude Haiku를 사용해 원문을 자동 분석하고, 모든 일정을 가족 캘린더에 통합합니다.
 
-## 목표
+## 주요 기능
 
-- **Notion**: 원문/추가요구사항/파일을 입력 → Claude Haiku로 자동 파싱 → 필드 자동 채우기
-- **Google Calendar**: 파싱된 데이터로 자동 이벤트 생성
-- **양방향 동기화**: 노션 변경 ↔ 캘린더 변경 (향후)
+### 1단계: 파싱 (현재)
+- **입력**: Notion "비고 및 원문" 또는 "추가 요구사항(GPT)" 필드
+- **처리**: Claude Haiku 자동 분석 (온도: 0.2, Top P: 0.9)
+- **출력**: 구조화된 일정 데이터 (JSON)
+
+### 2단계: 자동화 (진행 중)
+- **Webhook**: Notion 필드 변경 감지 → 자동 트리거
+- **동기화**: 파싱 데이터 → Notion 필드 자동 채우기
+- **캘린더**: Google Calendar 자동 이벤트 생성
+
+### 3단계: 양방향 동기화 (계획)
+- 노션 수정 → 캘린더 수정
+- 캘린더 삭제 → 노션 삭제
+- 충돌 해결 로직
 
 ## 아키텍처
 
-### 핵심 모듈
+```
+┌─────────────────┐
+│   사용자 입력    │
+│  (원문/파일)    │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│  Claude Parser   │ ◄── Haiku 모델 (온도 0.2, Top P 0.9)
+│  (JSON 파싱)    │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐    ┌──────────────────┐
+│  Notion Update   │───▶│  Google Calendar │
+│  (필드 채우기)   │    │  (이벤트 생성)    │
+└─────────────────┘    └──────────────────┘
+         ▲                      │
+         │                      ▼
+         └──────────────────────┘
+          (양방향 동기화)
+```
 
-1. **ClaudeParser** (`src/claude_parser.py`)
-   - Claude Haiku를 사용하여 원문 분석
-   - 제목, 날짜, 시간, 장소, 참석자 등 자동 추출
-   - JSON 형식으로 구조화된 데이터 반환
+## 빠른 시작
 
-2. **NotionClient** (`src/notion_client.py`)
-   - Notion API 래퍼
-   - 페이지 조회, 속성 업데이트, 데이터베이스 쿼리
-   - 양방향 동기화용 추적 필드 관리
-
-3. **GoogleCalendarClient** (`src/google_calendar_client.py`)
-   - Google Calendar API 래퍼
-   - 이벤트 생성, 수정, 삭제
-   - 캘린더 조회 및 검색
-
-4. **SyncManager** (`src/sync_manager.py`)
-   - Notion과 Google Calendar 간 동기화
-   - 원문 입력 처리 워크플로우
-   - 양방향 변경 감지 및 동기화 (향후)
-
-## 사용 방법
-
-### 설치
+### 1. 설치
 
 ```bash
+# 저장소 클론
+git clone https://github.com/pyu4277/schedulejarvis.git
+cd schedulejarvis
+
+# 가상 환경 생성
 python -m venv venv
 source venv/bin/activate  # Linux/Mac
 # 또는
 venv\Scripts\activate  # Windows
 
+# 의존성 설치
 pip install -r requirements.txt
 ```
 
-### 환경 설정
-
-1. `.env.example`을 `.env`로 복사
-2. 필요한 API 키 설정:
-   - `NOTION_API_KEY`: https://www.notion.so/my-integrations
-   - `ANTHROPIC_API_KEY`: https://console.anthropic.com/
-   - `GOOGLE_CREDENTIALS_FILE`: Google Calendar OAuth 인증 파일
-
-### 명령어
-
-#### 1. 원문 파싱 및 이벤트 생성
+### 2. API 키 설정
 
 ```bash
-python main.py parse --text "교내일정 시험지 점검을 도와주셔서 오찬을 준비하였습니다. 시간과 장소는 나눌터에서 11:30~ 입니다."
+# .env 파일 생성
+cp .env.example .env
+
+# 필수 API 키 추가
+# - NOTION_API_KEY (https://www.notion.so/my-integrations)
+# - ANTHROPIC_API_KEY (https://console.anthropic.com/)
+# - Google Calendar 인증 (credentials.json 또는 환경변수)
 ```
 
-또는 옵션과 함께:
+### 3. 사용 방법
+
+#### **방법 1: CLI (수동)**
 
 ```bash
-python main.py parse --text "..." --page-id "notion_page_id"
+# 텍스트 파싱 및 일정 생성
+python main.py parse --text "교내일정 회의가 있습니다. 시간: 11:00, 장소: 회의실"
+
+# Notion 페이지 ID와 함께 파싱
+python main.py parse \
+  --text "..." \
+  --page-id "a96a3b8563e3429..." 
 ```
 
-#### 2. 노션 페이지를 캘린더로 동기화
+#### **방법 2: API 서버 (자동)**
 
 ```bash
-python main.py sync-notion-to-calendar --page-id "notion_page_id"
+# Webhook 서버 시작
+python webhook_server.py --host 0.0.0.0 --port 5000
+
+# 다른 터미널에서 테스트
+curl -X POST http://localhost:5000/api/parse \
+  -H "Content-Type: application/json" \
+  -d '{
+    "text": "교내일정: 오후 2시에 회의가 있습니다.",
+    "page_id": "optional-page-id"
+  }'
 ```
 
-#### 3. 노션 페이지 목록 조회
+#### **방법 3: Notion Webhook (완전 자동)**
+
+1. Notion 데이터베이스에서 Webhook 구독 설정
+2. Webhook URL: `https://your-server.com/webhook/notion`
+3. "비고 및 원문" 필드 입력 시 자동 처리
+
+### CLI 명령어
 
 ```bash
+# 원문 파싱
+python main.py parse --text "..."
+
+# Notion 페이지를 캘린더로 동기화
+python main.py sync-notion-to-calendar --page-id "..."
+
+# 모든 Notion 페이지 조회
 python main.py list-notion-pages
-```
 
-#### 4. 캘린더 이벤트 조회
-
-```bash
+# 캘린더 이벤트 조회
 python main.py list-calendar-events --days 30
+
+# 파서 테스트
+python main.py test-parser --text "..."
 ```
 
-#### 5. 파서 테스트
+## Notion 데이터베이스 필드
 
-```bash
-python main.py test-parser --text "test_text"
-```
+### 주요 필드 (Make.com 기준)
 
-## Notion 데이터베이스 구조
-
-필수 필드:
-
-| 필드명 | 타입 | 설명 |
+| 필드명 | 타입 | 용도 |
 |--------|------|------|
-| 제목 | Title | 일정 제목 |
-| 날짜 | Date | 일정 날짜 범위 |
-| 시간 | Rich Text | HH:MM~HH:MM 형식 |
-| 장소 | Rich Text | 일정 장소 |
-| 주요내용 | Rich Text | 일정 요약 |
-| 참석자 | Rich Text | 참석자 이름 목록 |
-| 참석기관 | Rich Text | 참석자 소속 기관 |
-| 일정종류(중요도) | Multi-select | 교내/개인/가족 |
-| 비고 및 원문 | Rich Text | 원본 입력 텍스트 |
-| 추가 요구사항(GPT) | Rich Text | 추가 요청사항 |
-| 파일첨부 | File | 관련 파일 첨부 |
-| 캘린더 이벤트 ID | Rich Text | 구글 캘린더 이벤트 ID (추적용) |
-| 동기화 상태 | Select | 동기화 상태 추적 (향후) |
+| **주제** | Title | 일정 제목 (자동 생성) |
+| **비고 및 원문** | Rich Text | **입력 필드** - 원본 텍스트 |
+| **추가 요구사항(GPT)** | Rich Text | **입력 필드** - 추가 지시사항 |
+| **파일 첨부** | Files | **입력 필드** - 첨부 파일 |
+| **일시** | Date | 일정 날짜 범위 (자동 채우기) |
+| **시간** | Rich Text | 시간 (자동 채우기) |
+| **일시/장소** | Rich Text | 장소 정보 (자동 채우기) |
+| **주요내용** | Rich Text | 요약 (자동 채우기) |
+| **참석자** | Relation | 참석자 (자동 추출) |
+| **참석기관** | Rich Text | 소속 기관 (자동 추출) |
+| **일정종류(중요도)** | Multi-select | 분류 (자동 추출) |
+| **구글ID** | Rich Text | Google Calendar Event ID (자동) |
+| **생성(setting)** | Checkbox | 캘린더 생성 완료 (자동) |
+| **GPT 요약 결과** | Rich Text | Claude 분석 결과 (자동) |
 
-## Claude Haiku 파싱 규칙
+### 워크플로우
 
-### 입력
+```
+사용자 입력 ("비고 및 원문" 입력)
+    ↓
+웹훅 감지 (또는 수동 트리거)
+    ↓
+Claude Haiku 분석 (JSON 생성)
+    ↓
+Notion 필드 자동 채우기
+    ↓
+Google Calendar 이벤트 생성
+    ↓
+"구글ID" & "생성(setting)" 업데이트 완료
+```
 
-- 텍스트 또는 이미지 파일
-- OCR 자동 처리
-- 원문 기반 정보 추출
+## Claude Haiku 파싱 포맷
+
+### 입력 예시
+
+```
+교내일정: 시험지 점검을 도와주셔서 오찬을 준비했습니다. 
+시간과 장소는 나눌터에서 11:30~ 입니다.
+```
 
 ### 출력 (JSON)
 
 ```json
 {
   "제목": "시험지 점검에 대한 감사 오찬",
-  "날짜": "2026.04.21. (화)",
+  "날짜": "2026.04.21. (월)",
   "시간": "11:30~23:59",
   "장소": ["나눌터"],
-  "주요내용": "시험지 점검을 도와준 것에 대한 감사 표시로 오찬을 준비하였습니다.",
+  "주요내용": "시험지 점검을 도와주신 것에 감사드리는 오찬",
   "참석자": ["N/A"],
   "참석기관": ["N/A"],
   "종류": ["교내"],
@@ -137,63 +194,95 @@ python main.py test-parser --text "test_text"
 }
 ```
 
-## Google Calendar 매핑
+## Google Calendar 설정
 
-모든 일정은 **윤윤남매 가족일정** 캘린더(`iothomepyu@gmail.com`)로 통합됩니다.
+- **대상 캘린더**: 윤윤남매 가족일정 (`iothomepyu@gmail.com`)
+- **인증 방식**: 
+  - OAuth 2.0 (credentials.json)
+  - 또는 Refresh Token (환경변수)
 
-## 향후 기능
+## Webhook 서버 배포
 
-- [ ] Notion Webhook 자동 감지
-- [ ] 양방향 동기화 (수정/삭제)
-- [ ] 반복 일정 지원
-- [ ] 참석자 초대 기능
-- [ ] 다중 캘린더 지원
-- [ ] UI 대시보드
-- [ ] 배치 처리
+### 로컬 테스트
 
-## 에러 해결
+```bash
+python webhook_server.py --debug
+```
 
-### Notion API 에러
+### 프로덕션 배포 (Gunicorn)
 
-- API 키 확인
-- 데이터베이스 ID 확인
-- 통합 권한 확인 (Notion 설정)
+```bash
+gunicorn -w 4 -b 0.0.0.0:5000 "src.webhook_listener:create_app()"
+```
 
-### Google Calendar 에러
+### Docker 배포 (예정)
 
-- OAuth 인증 파일 확인
-- 캘린더 ID 확인
-- API 활성화 확인 (Google Cloud)
-
-### Claude 파싱 에러
-
-- 입력 형식 확인
-- API 키 확인
-- 토큰 제한 확인
+```dockerfile
+FROM python:3.11-slim
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+COPY . .
+CMD ["python", "webhook_server.py"]
+```
 
 ## 개발 로드맵
 
-### Phase 1: 기본 기능 (현재)
-- ✅ 텍스트 파싱
-- ✅ Notion 업데이트
-- ✅ Google Calendar 이벤트 생성
+### ✅ 완료
+- CLI 인터페이스
+- Claude Haiku 파싱
+- Notion 필드 자동 채우기
+- Google Calendar 이벤트 생성
+- Webhook 리스너 (API 방식)
 
-### Phase 2: 자동화
-- [ ] Notion Webhook 통합
-- [ ] 실시간 자동 동기화
-- [ ] 이미지 파일 OCR 처리
+### 🔄 진행 중
+- Notion Webhook 자동 감지
+- 필드명 매핑 최종화
+- Google Calendar 인증 통합
 
-### Phase 3: 양방향 동기화
-- [ ] 노션 변경 감지
-- [ ] 캘린더 변경 감지
-- [ ] 충돌 해결 로직
+### 📋 계획 중
+- 양방향 동기화 (수정/삭제)
+- 이미지 OCR 처리
+- 반복 일정 지원
+- 참석자 자동 초대
+- 웹 UI 대시보드
+- Docker 컨테이너
 
-### Phase 4: 고급 기능
-- [ ] 반복 일정 지원
-- [ ] 시간대 관리
-- [ ] 참석자 초대
-- [ ] 알림 설정
+## 문제 해결
+
+### API 키 관련 오류
+
+```bash
+# .env 파일 확인
+cat .env
+
+# 필수 키 존재 확인
+- NOTION_API_KEY ✓
+- ANTHROPIC_API_KEY ✓
+- GOOGLE_CLIENT_ID 또는 GOOGLE_CREDENTIALS_FILE ✓
+```
+
+### 권한 오류
+
+```
+Notion: 통합 권한 확인 (https://www.notion.so/my-integrations)
+Google: Google Cloud Console에서 Calendar API 활성화
+Anthropic: 계정의 API 사용량 확인
+```
+
+## 기술 스택
+
+- **Backend**: Python 3.11+
+- **LLM**: Claude Haiku (Temperature: 0.2, Top P: 0.9)
+- **Notion**: Notion API v1
+- **Google Calendar**: Google Calendar API v3
+- **Web Framework**: Flask 3.0
+- **Deployment**: Gunicorn, Docker (계획)
 
 ## 라이선스
 
 MIT
+
+## 문의
+
+이슈 및 피드백은 GitHub Issues에 등록해주세요.

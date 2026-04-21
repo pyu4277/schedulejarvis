@@ -29,6 +29,9 @@ class SyncManager:
             parsed_data = self.parser.parse_schedule(raw_text)
             logger.info(f"Parsed schedule: {parsed_data.get('제목', 'Unknown')}")
 
+            # 원본 텍스트 저장
+            parsed_data["original_text"] = raw_text
+
             # Step 2: Update Notion page with parsed data
             if page_id:
                 self._update_notion_page(page_id, parsed_data)
@@ -40,6 +43,8 @@ class SyncManager:
             # Step 4: Update Notion with calendar event ID
             if page_id and calendar_event_id:
                 self._update_notion_calendar_id(page_id, calendar_event_id)
+                # 생성(setting) 플래그 활성화
+                self._update_notion_generation_flag(page_id, True)
 
             return parsed_data
 
@@ -54,11 +59,16 @@ class SyncManager:
                 "title": parsed_data.get("제목"),
                 "date": self._build_notion_date(parsed_data),
                 "time": parsed_data.get("시간"),
-                "location": parsed_data.get("장소"),
+                "location": self._build_location_text(parsed_data),
                 "content": parsed_data.get("주요내용"),
                 "attendees": parsed_data.get("참석자"),
                 "organization": parsed_data.get("참석기관"),
                 "category": parsed_data.get("종류"),
+                "raw_text": parsed_data.get("original_text"),  # 원본 입력
+                "additional_requirement": parsed_data.get("additional_requirement"),
+                "calendar_event_id": None,  # 초기값은 None, 캘린더 생성 후 업데이트
+                "gpt_summary": self._format_gpt_summary(parsed_data),  # 전체 파싱 결과
+                "generation_flag": False,  # 초기값은 False
             }
 
             properties = self.notion.create_property_dict(
@@ -90,6 +100,46 @@ class SyncManager:
         except Exception as e:
             logger.error(f"Error building Notion date: {e}")
             return None
+
+    def _build_location_text(self, parsed_data: Dict[str, Any]) -> str:
+        """Build location text for '일시/장소' field"""
+        try:
+            location_list = parsed_data.get("장소")
+            date_str = parsed_data.get("날짜", "")
+            time_str = parsed_data.get("시간", "")
+
+            # 형식: "YYYY.MM.DD. (요일) HH:MM~HH:MM / 장소"
+            if location_list == "N/A":
+                location_str = ""
+            elif isinstance(location_list, list):
+                location_str = ", ".join(location_list)
+            else:
+                location_str = str(location_list)
+
+            parts = []
+            if date_str and date_str != "N/A":
+                parts.append(date_str)
+            if time_str and time_str != "N/A":
+                parts.append(time_str)
+            if location_str:
+                parts.append(location_str)
+
+            return " / ".join(parts) if parts else "N/A"
+        except Exception as e:
+            logger.error(f"Error building location text: {e}")
+            return "N/A"
+
+    def _format_gpt_summary(self, parsed_data: Dict[str, Any]) -> str:
+        """Format Claude Haiku parsing result for Notion"""
+        try:
+            import json
+            summary_dict = {k: v for k, v in parsed_data.items() if k in [
+                "제목", "날짜", "시간", "장소", "주요내용", "참석자", "참석기관", "종류"
+            ]}
+            return json.dumps(summary_dict, ensure_ascii=False, indent=2)
+        except Exception as e:
+            logger.error(f"Error formatting GPT summary: {e}")
+            return "{}"
 
     def _create_calendar_event(self, parsed_data: Dict[str, Any]) -> str:
         """Create Google Calendar event from parsed data"""
@@ -136,6 +186,19 @@ class SyncManager:
             logger.info(f"Updated Notion page {page_id} with calendar event ID")
         except Exception as e:
             logger.error(f"Error updating Notion calendar ID: {e}")
+
+    def _update_notion_generation_flag(self, page_id: str, flag: bool) -> None:
+        """Update Notion page generation flag"""
+        try:
+            properties = {
+                config.NOTION_FIELDS["generation_flag"]: {
+                    "checkbox": flag
+                }
+            }
+            self.notion.update_page_properties(page_id, properties)
+            logger.info(f"Updated Notion page {page_id} generation flag to {flag}")
+        except Exception as e:
+            logger.error(f"Error updating Notion generation flag: {e}")
 
     def sync_notion_to_calendar(self, page_id: str) -> Dict[str, Any]:
         """Sync Notion page to Google Calendar"""

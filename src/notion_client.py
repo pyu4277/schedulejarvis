@@ -136,7 +136,10 @@ class NotionClient:
 
             field_name = field_mapping[key]
 
-            if value is None or value == "N/A":
+            if value is None:
+                continue
+
+            if value == "N/A" and key not in ["location", "attendees", "organization"]:
                 continue
 
             if key == "title":
@@ -153,6 +156,8 @@ class NotionClient:
                     content = str(value)
                 result[field_name] = {"rich_text": [{"text": {"content": content}}]}
             elif key == "content":
+                result[field_name] = {"rich_text": [{"text": {"content": str(value)}}]}
+            elif key == "time":
                 result[field_name] = {"rich_text": [{"text": {"content": str(value)}}]}
             elif key == "attendees":
                 if isinstance(value, list):
@@ -172,10 +177,18 @@ class NotionClient:
                         "multi_select": [{"name": v} for v in value]
                     }
                 else:
-                    result[field_name] = {"select": {"name": str(value)}}
-            elif key == "time":
-                result[field_name] = {"rich_text": [{"text": {"content": str(value)}}]}
+                    result[field_name] = {"multi_select": [{"name": str(value)}]}
             elif key == "calendar_event_id":
                 result[field_name] = {"rich_text": [{"text": {"content": str(value)}}]}
+            elif key == "raw_text":
+                result[field_name] = {"rich_text": [{"text": {"content": str(value)}}]}
+            elif key == "additional_requirement":
+                result[field_name] = {"rich_text": [{"text": {"content": str(value)}}]}
+            elif key == "gpt_summary":
+                result[field_name] = {"rich_text": [{"text": {"content": str(value)}}]}
+            elif key == "parse_result":
+                result[field_name] = {"rich_text": [{"text": {"content": str(value)}}]}
+            elif key == "generation_flag":
+                result[field_name] = {"checkbox": bool(value)}
 
         return result
